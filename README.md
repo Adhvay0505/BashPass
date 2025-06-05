@@ -1,7 +1,25 @@
-# Password_generator
-A simple password generator built using bash,
--Download the file or git clone it on the Linux terminal
--Navigate to the directory where it was installed
--Make the bash script executable (chmod +x password_generator)
--Execute the bash script (./password_generator)
-Enter the length of your passwords and the number of password recommendations you want :D
+# 🔐 Password Generator (Bash)
+
+A simple and lightweight password generator written in Bash. Generate secure, random passwords directly from your Linux terminal.
+
+---
+
+## 📦 Features
+
+-  Fully written in Bash – no external dependencies
+-  Customizable password length
+-  Generate multiple password suggestions at once
+
+---
+
+## 📥 Installation
+
+1. **Download the script manually or clone the repository:**
+   ```bash
+   git clone https://github.com/Adhvay0505/CLI_Password_Generator.git
+2. **Make the file executable**
+   ```bash
+   chmod +x password_generator
+3. **Run the script**
+   ```bash
+   ./password_generator
