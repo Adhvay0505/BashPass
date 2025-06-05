@@ -17,6 +17,7 @@ A simple and lightweight password generator written in Bash. Generate secure, ra
 1. **Download the script manually or clone the repository:**
    ```bash
    git clone https://github.com/Adhvay0505/CLI_Password_Generator.git
+   cd CLI_Password_Generator/
 2. **Make the file executable**
    ```bash
    chmod +x password_generator
