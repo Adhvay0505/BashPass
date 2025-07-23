@@ -9,6 +9,7 @@ A simple and lightweight password generator written in Bash. Generate secure, ra
 -  Fully written in Bash – no external dependencies
 -  Customizable password length
 -  Generate multiple password suggestions at once
+-  Save the generated passwords in a .txt file
 
 ---
 
@@ -20,7 +21,7 @@ A simple and lightweight password generator written in Bash. Generate secure, ra
    cd CLI_Password_Generator/
 2. **Make the file executable**
    ```bash
-   chmod +x password_generator
+   chmod +x BashPass
 3. **Run the script**
    ```bash
-   ./password_generator
+   ./BashPass
