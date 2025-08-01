@@ -1,6 +1,6 @@
 # Bash Password Manager
 
-A simple terminal-based **Password Manager and Generator** written in Bash. Store, search, delete, and view passwords securely right in your terminal—no dependencies required except standard Unix tools!
+A simple terminal-based **Password Manager** written in Bash. Store, search, delete, and view passwords 
 
 ## Features
 
@@ -10,7 +10,7 @@ A simple terminal-based **Password Manager and Generator** written in Bash. Stor
 - **Delete passwords** easily by label or username  
 - **View all passwords** in a clean, tabular format  
 - Simple CSV storage (`password_store.csv`)—easy to back up or encrypt  
-- Lightweight and easy to use!
+
 
 ## 📥 Installation
 
