@@ -16,15 +16,14 @@ A simple terminal-based **Password Manager** written in Bash. Store, search, del
 
 1. **Download the script manually or clone the repository:**
    ```bash
-   git clone https://github.com/Adhvay0505/CLI_Password_Generator.git
-   cd CLI_Password_Generator/
+   git clone https://github.com/Adhvay0505/BashPass.git
+   cd BashPass/
 2. **Make the file executable**
    ```bash
    chmod +x BashPass
 3. **Run the script**
    ```bash
    ./BashPass
-
-
-
-
+4. **Or just run using**
+   ```bash
+   bash BashPass
