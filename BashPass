@@ -1,0 +1,128 @@
+#!/bin/bash
+
+PASSWORD_FILE="password_store.csv"
+
+# Draw a simple banner
+clear 
+echo "
+ 
+
+██████   █████  ███████ ██   ██ ██████   █████  ███████ ███████ 
+██   ██ ██   ██ ██      ██   ██ ██   ██ ██   ██ ██      ██      
+██████  ███████ ███████ ███████ ██████  ███████ ███████ ███████ 
+██   ██ ██   ██      ██ ██   ██ ██      ██   ██      ██      ██ 
+██████  ██   ██ ███████ ██   ██ ██      ██   ██ ███████ ███████ 
+                                                                
+                                       
+"
+
+
+# Create data file if it doesn't exist
+touch "$PASSWORD_FILE"
+
+validate_number() {
+    if ! [[ "$1" =~ ^[0-9]+$ ]] || [ "$1" -le 0 ]; then
+        echo "❌ Invalid input: '$1'. Please enter a positive number."
+        exit 1
+    fi
+}
+
+generate_password() {
+    local PASS_LENGTH=$1
+    local CHARSET='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+{}[]=-'
+    local password
+    while true; do
+        password=$(tr -dc "$CHARSET" < /dev/urandom | head -c "$PASS_LENGTH")
+        if [[ "$password" =~ [\!\@\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\-] ]]; then
+            echo "$password"
+            break
+        fi
+    done
+}
+
+save_password() {
+    local service="$1"
+    local username="$2"
+    local password="$3"
+    echo "$service,$username,$password" >> "$PASSWORD_FILE"
+    echo "✅ Saved for $service ($username)"
+}
+
+view_passwords() {
+    echo ""
+    echo "🔑 Saved Passwords"
+    echo "-----------------------------------------------"
+    printf "%-20s %-20s %-30s\n" "SERVICE" "USERNAME" "PASSWORD"
+    echo "-----------------------------------------------"
+    if [[ -s "$PASSWORD_FILE" ]]; then
+        while IFS=',' read -r service username password; do
+            printf "%-20s %-20s %-30s\n" "$service" "$username" "$password"
+        done < "$PASSWORD_FILE"
+    else
+        echo "No saved passwords!"
+    fi
+}
+
+search_passwords() {
+    read -p "🔎 Enter service or username to search: " term
+    echo "-----------------------------------------------"
+    printf "%-20s %-20s %-30s\n" "SERVICE" "USERNAME" "PASSWORD"
+    echo "-----------------------------------------------"
+    grep -i "$term" "$PASSWORD_FILE" | while IFS=',' read -r service username password; do
+        printf "%-20s %-20s %-30s\n" "$service" "$username" "$password"
+    done
+}
+
+delete_password() {
+    read -p "🗑️  Enter service or username to delete: " term
+    tmpfile=$(mktemp)
+    grep -iv "$term" "$PASSWORD_FILE" > "$tmpfile"
+    mv "$tmpfile" "$PASSWORD_FILE"
+    echo "♻️ Relevant entries deleted (if matched)."
+}
+
+main_menu() {
+    while true; do
+        echo ""
+        echo "1. Generate a new password"
+        echo "2. View all saved passwords"
+        echo "3. Search for a password"
+        echo "4. Delete a password"
+        echo "5. Exit"
+        echo ""
+        read -p "Choose an option [1-5]: " choice
+        case "$choice" in
+            1)
+                read -p "🔤 Service Name: " service
+                read -p "👤 Username/Email: " username
+                read -p "🔢 Password Length: " PASS_LENGTH
+                validate_number "$PASS_LENGTH"
+                password=$(generate_password "$PASS_LENGTH")
+                echo -e "✅ Generated Password: \033[0;32m$password\033[0m"
+                read -p "💾 Save this password? (Y/N): " save
+                if [[ "$save" =~ ^[Yy]$ ]]; then
+                    save_password "$service" "$username" "$password"
+                fi
+                ;;
+            2)
+                view_passwords
+                ;;
+            3)
+                search_passwords
+                ;;
+            4)
+                delete_password
+                ;;
+            5)
+                echo "👋 Bye!"
+                exit 0
+                ;;
+            *)
+                echo "❌ Invalid option!"
+                ;;
+        esac
+    done
+}
+
+main_menu
+
