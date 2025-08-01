@@ -27,3 +27,7 @@ A simple terminal-based **Password Manager** written in Bash. Store, search, del
 4. **Or just run using**
    ```bash
    bash BashPass
+   ```
+
+   
+<img width="887" height="485" alt="Screenshot From 2025-08-01 23-58-18" src="https://github.com/user-attachments/assets/a33aef48-f40a-4c5a-b8b2-3e9814eb9a24" />
