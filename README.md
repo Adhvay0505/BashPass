@@ -25,3 +25,6 @@ A simple and lightweight password generator written in Bash. Generate secure, ra
 3. **Run the script**
    ```bash
    ./BashPass
+
+
+<img width="1299" height="739" alt="Screenshot From 2025-08-01 23-10-16" src="https://github.com/user-attachments/assets/e3bf9f1a-b7fe-4fd4-8b53-9784840c8062" />
