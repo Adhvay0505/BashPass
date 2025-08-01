@@ -1,17 +1,16 @@
-# 🔐 Password Manager (Bash)
+# Bash Password Manager
 
-A simple and lightweight password generator written in Bash. Generate secure, random passwords directly from your Linux terminal.
+A simple terminal-based **Password Manager and Generator** written in Bash. Store, search, delete, and view passwords securely right in your terminal—no dependencies required except standard Unix tools!
 
----
+## Features
 
-## 📦 Features
-
--  Fully written in Bash – no external dependencies
--  Customizable password length
--  Generate multiple password suggestions at once
--  Save the generated passwords in a .txt file
-
----
+- **Generate strong passwords** for any service with customizable length  
+- **Save passwords** with a service label and username/email  
+- **Search passwords** by service or username  
+- **Delete passwords** easily by label or username  
+- **View all passwords** in a clean, tabular format  
+- Simple CSV storage (`password_store.csv`)—easy to back up or encrypt  
+- Lightweight and easy to use!
 
 ## 📥 Installation
 
