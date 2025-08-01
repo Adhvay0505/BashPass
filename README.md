@@ -1,4 +1,4 @@
-# 🔐 Password Generator (Bash)
+# 🔐 Password Manager (Bash)
 
 A simple and lightweight password generator written in Bash. Generate secure, random passwords directly from your Linux terminal.
 
@@ -28,4 +28,4 @@ A simple and lightweight password generator written in Bash. Generate secure, ra
 
 
 
-<img width="886" height="383" alt="Screenshot From 2025-08-01 23-12-38" src="https://github.com/user-attachments/assets/7297489d-59af-4ead-a633-dc267ed5dda2" />
+
