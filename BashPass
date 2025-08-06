@@ -33,10 +33,14 @@ generate_password() {
     local password
     while true; do
         password=$(tr -dc "$CHARSET" < /dev/urandom | head -c "$PASS_LENGTH")
-        if [[ "$password" =~ [\!\@\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\-] ]]; then
-            echo "$password"
-            break
-        fi
+
+        [[ "$password" =~ [A-Z] ]] || continue
+        [[ "$password" =~ [a-z] ]] || continue
+        [[ "$password" =~ [0-9] ]] || continue
+        [[ "$password" =~ [\!\@\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\-] ]] || continue
+
+        echo "$password"
+        break
     done
 }
 
@@ -51,9 +55,9 @@ save_password() {
 view_passwords() {
     echo ""
     echo "🔑 Saved Passwords"
-    echo "-----------------------------------------------"
+    echo "--------------------------------------------------"
     printf "%-20s %-20s %-30s\n" "SERVICE" "USERNAME" "PASSWORD"
-    echo "-----------------------------------------------"
+    echo "--------------------------------------------------"
     if [[ -s "$PASSWORD_FILE" ]]; then
         while IFS=',' read -r service username password; do
             printf "%-20s %-20s %-30s\n" "$service" "$username" "$password"
@@ -65,9 +69,9 @@ view_passwords() {
 
 search_passwords() {
     read -p "🔎 Enter service or username to search: " term
-    echo "-----------------------------------------------"
+    echo "--------------------------------------------------"
     printf "%-20s %-20s %-30s\n" "SERVICE" "USERNAME" "PASSWORD"
-    echo "-----------------------------------------------"
+    echo "--------------------------------------------------"
     grep -i "$term" "$PASSWORD_FILE" | while IFS=',' read -r service username password; do
         printf "%-20s %-20s %-30s\n" "$service" "$username" "$password"
     done
@@ -125,4 +129,3 @@ main_menu() {
 }
 
 main_menu
-
