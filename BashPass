@@ -1,47 +1,85 @@
 #!/bin/bash
 
 PASSWORD_FILE="password_store.csv"
-
-# Draw a simple banner
-clear 
-echo "
- 
-
-██████   █████  ███████ ██   ██ ██████   █████  ███████ ███████ 
-██   ██ ██   ██ ██      ██   ██ ██   ██ ██   ██ ██      ██      
-██████  ███████ ███████ ███████ ██████  ███████ ███████ ███████ 
-██   ██ ██   ██      ██ ██   ██ ██      ██   ██      ██      ██ 
-██████  ██   ██ ███████ ██   ██ ██      ██   ██ ███████ ███████ 
-                                                                
-                                       
-"
-
-
-# Create data file if it doesn't exist
-touch "$PASSWORD_FILE"
+ENCRYPTED_FILE="password_store.csv.enc"
+MASTER_PASSWORD=""
 
 validate_number() {
     if ! [[ "$1" =~ ^[0-9]+$ ]] || [ "$1" -le 0 ]; then
-        echo "❌ Invalid input: '$1'. Please enter a positive number."
+        echo "Invalid input: '$1'. Please enter a positive number."
         exit 1
     fi
 }
 
 generate_password() {
     local PASS_LENGTH=$1
-    local CHARSET='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+{}[]=-'
-    local password
-    while true; do
-        password=$(tr -dc "$CHARSET" < /dev/urandom | head -c "$PASS_LENGTH")
-
-        [[ "$password" =~ [A-Z] ]] || continue
-        [[ "$password" =~ [a-z] ]] || continue
-        [[ "$password" =~ [0-9] ]] || continue
-        [[ "$password" =~ [\!\@\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\-] ]] || continue
-
-        echo "$password"
-        break
+    local UPPER='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    local LOWER='abcdefghijklmnopqrstuvwxyz'
+    local DIGITS='0123456789'
+    local SPECIAL='!@#$%^&*()_+{}[]=-'
+    local ALL_CHARS="${UPPER}${LOWER}${DIGITS}${SPECIAL}"
+    
+    local password=""
+    password+="${UPPER:RANDOM%${#UPPER}:1}"
+    password+="${LOWER:RANDOM%${#LOWER}:1}"
+    password+="${DIGITS:RANDOM%${#DIGITS}:1}"
+    password+="${SPECIAL:RANDOM%${#SPECIAL}:1}"
+    
+    local remaining=$((PASS_LENGTH - 4))
+    for ((i=0; i<remaining; i++)); do
+        password+="${ALL_CHARS:RANDOM%${#ALL_CHARS}:1}"
     done
+    
+    echo "$password"
+}
+
+derive_key() {
+    echo -n "$MASTER_PASSWORD" | openssl dgst -sha256 -binary | xxd -p -c 32
+}
+
+encrypt_file() {
+    if [[ -f "$PASSWORD_FILE" ]]; then
+        echo "BASHPASS_MARKER" >> "$PASSWORD_FILE"
+        openssl aes-256-cbc -salt -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$PASSWORD_FILE" -out "$ENCRYPTED_FILE" 2>/dev/null
+        rm -f "$PASSWORD_FILE"
+    fi
+}
+
+decrypt_file() {
+    if [[ -f "$ENCRYPTED_FILE" ]]; then
+        openssl aes-256-cbc -d -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$ENCRYPTED_FILE" -out "$PASSWORD_FILE" 2>/dev/null
+        if [[ $? -ne 0 ]]; then
+            echo "Decryption failed! Wrong password or corrupted file."
+            exit 1
+        fi
+    fi
+}
+
+prompt_master_password() {
+    local attempts=0
+    local max_attempts=3
+    
+    while [[ $attempts -lt $max_attempts ]]; do
+        read -sp "Enter Master Password: " MASTER_PASSWORD
+        echo
+        
+        if [[ -f "$ENCRYPTED_FILE" ]]; then
+            decrypt_file
+            if grep -q "BASHPASS_MARKER" "$PASSWORD_FILE" 2>/dev/null; then
+                sed -i '/BASHPASS_MARKER/d' "$PASSWORD_FILE"
+                return 0
+            else
+                rm -f "$PASSWORD_FILE" 2>/dev/null
+                echo "Wrong password! (Attempt $((attempts + 1))/$max_attempts)"
+                attempts=$((attempts + 1))
+            fi
+        else
+            return 0
+        fi
+    done
+    
+    echo "Too many failed attempts. Exiting."
+    exit 1
 }
 
 save_password() {
@@ -49,12 +87,13 @@ save_password() {
     local username="$2"
     local password="$3"
     echo "$service,$username,$password" >> "$PASSWORD_FILE"
-    echo "✅ Saved for $service ($username)"
+    echo "Saved for $service ($username)"
+    encrypt_file
 }
 
 view_passwords() {
     echo ""
-    echo "🔑 Saved Passwords"
+    echo "Saved Passwords"
     echo "--------------------------------------------------"
     printf "%-20s %-20s %-30s\n" "SERVICE" "USERNAME" "PASSWORD"
     echo "--------------------------------------------------"
@@ -68,7 +107,7 @@ view_passwords() {
 }
 
 search_passwords() {
-    read -p "🔎 Enter service or username to search: " term
+    read -p "Enter service or username to search: " term
     echo "--------------------------------------------------"
     printf "%-20s %-20s %-30s\n" "SERVICE" "USERNAME" "PASSWORD"
     echo "--------------------------------------------------"
@@ -78,14 +117,66 @@ search_passwords() {
 }
 
 delete_password() {
-    read -p "🗑️  Enter service or username to delete: " term
+    read -p "Enter service or username to delete: " term
     tmpfile=$(mktemp)
     grep -iv "$term" "$PASSWORD_FILE" > "$tmpfile"
     mv "$tmpfile" "$PASSWORD_FILE"
-    echo "♻️ Relevant entries deleted (if matched)."
+    encrypt_file
+    echo "Relevant entries deleted (if matched)."
 }
 
+cleanup() {
+    encrypt_file
+    rm -f "$PASSWORD_FILE"
+    exit 0
+}
+
+# Draw a simple banner
+clear 
+echo "
+██████   █████  ███████ ██   ██ ██████   █████  ███████ ███████ 
+██   ██ ██   ██ ██      ██   ██ ██   ██ ██   ██ ██      ██      
+██████  ███████ ███████ ███████ ██████  ███████ ███████ ███████ 
+██   ██ ██   ██      ██ ██   ██ ██      ██   ██      ██      ██ 
+██████  ██   ██ ███████ ██   ██ ██      ██   ██ ███████ ███████ 
+                                                                
+                                        
+"
+
+# Create data file if it doesn't exist
+if [[ ! -f "$ENCRYPTED_FILE" ]]; then
+    if [[ -f "$PASSWORD_FILE" ]] && [[ -s "$PASSWORD_FILE" ]]; then
+        echo "Found existing plaintext passwords!"
+        read -p "Enter a master password to encrypt existing data: " -s MASTER_PASSWORD
+        echo
+        encrypt_file
+        echo "Existing passwords have been encrypted."
+    else
+        echo "Welcome to BashPass! Let's set up your master password."
+        while true; do
+            read -p "Create a master password: " -s MASTER_PASSWORD
+            echo
+            read -p "Confirm master password: " -s MASTER_PASSWORD_CONFIRM
+            echo
+            if [[ "$MASTER_PASSWORD" == "$MASTER_PASSWORD_CONFIRM" ]]; then
+                echo "Master password set successfully!"
+                break
+            else
+                echo "Passwords don't match. Please try again."
+            fi
+        done
+        echo "BASHPASS_MARKER" > "$PASSWORD_FILE"
+        encrypt_file
+        rm -f "$PASSWORD_FILE"
+        echo "Your password vault is now encrypted!"
+    fi
+else
+    echo "Encrypted password store detected!"
+fi
+
 main_menu() {
+    prompt_master_password
+    trap cleanup EXIT
     while true; do
         echo ""
         echo "1. Generate a new password"
@@ -97,13 +188,13 @@ main_menu() {
         read -p "Choose an option [1-5]: " choice
         case "$choice" in
             1)
-                read -p "🔤 Service Name: " service
-                read -p "👤 Username/Email: " username
-                read -p "🔢 Password Length: " PASS_LENGTH
+                read -p "Service Name: " service
+                read -p "Username/Email: " username
+                read -p "Password Length: " PASS_LENGTH
                 validate_number "$PASS_LENGTH"
                 password=$(generate_password "$PASS_LENGTH")
-                echo -e "✅ Generated Password: \033[0;32m$password\033[0m"
-                read -p "💾 Save this password? (Y/N): " save
+                echo "Generated Password: $password"
+                read -p "Save this password? (Y/N): " save
                 if [[ "$save" =~ ^[Yy]$ ]]; then
                     save_password "$service" "$username" "$password"
                 fi
@@ -118,11 +209,11 @@ main_menu() {
                 delete_password
                 ;;
             5)
-                echo "👋 Bye!"
-                exit 0
+                echo "Bye!"
+                break
                 ;;
             *)
-                echo "❌ Invalid option!"
+                echo "Invalid option!"
                 ;;
         esac
     done
