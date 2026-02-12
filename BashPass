@@ -40,16 +40,22 @@ derive_key() {
 encrypt_file() {
     if [[ -f "$PASSWORD_FILE" ]]; then
         echo "BASHPASS_MARKER" >> "$PASSWORD_FILE"
-        openssl aes-256-cbc -salt -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$PASSWORD_FILE" -out "$ENCRYPTED_FILE" 2>/dev/null
+        openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$PASSWORD_FILE" -out "$ENCRYPTED_FILE" 2>/dev/null
+        local result=$?
         rm -f "$PASSWORD_FILE"
+        if [[ $result -ne 0 ]] || [[ ! -f "$ENCRYPTED_FILE" ]]; then
+            echo "Error: Encryption failed. Check OpenSSL installation."
+            exit 1
+        fi
     fi
 }
 
 decrypt_file() {
     if [[ -f "$ENCRYPTED_FILE" ]]; then
-        openssl aes-256-cbc -d -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$ENCRYPTED_FILE" -out "$PASSWORD_FILE" 2>/dev/null
+        openssl enc -aes-256-cbc -d -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$ENCRYPTED_FILE" -out "$PASSWORD_FILE" 2>/dev/null
         if [[ $? -ne 0 ]]; then
             echo "Decryption failed! Wrong password or corrupted file."
+            rm -f "$PASSWORD_FILE" 2>/dev/null
             exit 1
         fi
     fi
