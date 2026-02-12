@@ -18,7 +18,7 @@ A secure, encrypted password manager written in pure Bash.
 ## Quick Install
 
 ```bash
-curl -sSL -o BashPass.sh https://github.com/Adhvay0505/BashPass/releases/latest/download/BashPass.sh && chmod +x BashPass.sh && ./BashPass.sh
+curl -sSL -o BashPass https://github.com/Adhvay0505/BashPass/releases/latest/download/BashPass && chmod +x BashPass && ./BashPass
 ```
 
 ## Manual Install
