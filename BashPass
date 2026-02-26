@@ -10,11 +10,13 @@ umask 077
 setup_ui() {
     if [[ -t 1 ]]; then
         C_RESET=$'\033[0m'
-        C_TITLE=$'\033[1;36m'
-        C_ACCENT=$'\033[1;33m'
+        C_TITLE=$'\033[1;32m'
+        C_ACCENT=$'\033[1;92m'
         C_OK=$'\033[1;32m'
         C_WARN=$'\033[1;31m'
-        C_DIM=$'\033[2m'
+        C_DIM=$'\033[0;90m'
+        C_PANEL=$'\033[0;32m'
+        C_PROMPT=$'\033[1;36m'
     else
         C_RESET=""
         C_TITLE=""
@@ -22,11 +24,18 @@ setup_ui() {
         C_OK=""
         C_WARN=""
         C_DIM=""
+        C_PANEL=""
+        C_PROMPT=""
     fi
 }
 
 ui_divider() {
-    printf "%s\n" "=============================================================="
+    local width
+    width=$(tput cols 2>/dev/null)
+    if [[ -z "$width" ]] || [[ "$width" -lt 40 ]]; then
+        width=62
+    fi
+    printf "%*s\n" "$width" "" | tr ' ' '='
 }
 
 ui_section() {
@@ -36,9 +45,47 @@ ui_section() {
     ui_divider
 }
 
+hacker_line() {
+    local label="$1"
+    local value="$2"
+    printf "%b[+] %-14s%b %s\n" "$C_PANEL" "$label" "$C_RESET" "$value"
+}
+
+vault_entry_count() {
+    if [[ ! -f "$PASSWORD_FILE" ]]; then
+        echo "0"
+        return
+    fi
+    awk -F',' -v header="$STORE_HEADER" '
+        $1 == header { next }
+        NF >= 3 { count++ }
+        END { print count+0 }
+    ' "$PASSWORD_FILE"
+}
+
+render_hacker_dashboard() {
+    local now entries host_name
+    now=$(date '+%Y-%m-%d %H:%M:%S')
+    host_name=$(hostname 2>/dev/null || echo "local")
+    entries=$(vault_entry_count)
+    ui_section "BASHPASS // VAULT CONSOLE"
+    hacker_line "operator" "${USER:-unknown}"
+    hacker_line "host" "$host_name"
+    hacker_line "timestamp" "$now"
+    hacker_line "vault_file" "$ENCRYPTED_FILE"
+    hacker_line "entries" "$entries"
+    echo
+    printf "%bCommands%b\n" "$C_TITLE" "$C_RESET"
+    printf "%b[1]%b gen/update    %b[2]%b add custom\n" "$C_ACCENT" "$C_RESET" "$C_ACCENT" "$C_RESET"
+    printf "%b[3]%b list all      %b[4]%b search\n" "$C_ACCENT" "$C_RESET" "$C_ACCENT" "$C_RESET"
+    printf "%b[5]%b delete        %b[6]%b services\n" "$C_ACCENT" "$C_RESET" "$C_ACCENT" "$C_RESET"
+    printf "%b[7]%b copy pass     %b[8]%b exit\n" "$C_ACCENT" "$C_RESET" "$C_ACCENT" "$C_RESET"
+    ui_divider
+}
+
 pause_for_user() {
     echo
-    read -r -p "Press Enter to continue..." _
+    read -r -p "Press Enter to return to console..." _
 }
 
 validate_number() {
@@ -373,18 +420,10 @@ main_menu() {
     while true; do
         clear
         print_logo
-        ui_section "BashPass Control Panel"
-        printf "%b1%b  Generate or update a password\n" "$C_ACCENT" "$C_RESET"
-        printf "%b2%b  Add a custom password\n" "$C_ACCENT" "$C_RESET"
-        printf "%b3%b  View all saved passwords\n" "$C_ACCENT" "$C_RESET"
-        printf "%b4%b  Search for a password\n" "$C_ACCENT" "$C_RESET"
-        printf "%b5%b  Delete a password\n" "$C_ACCENT" "$C_RESET"
-        printf "%b6%b  List services\n" "$C_ACCENT" "$C_RESET"
-        printf "%b7%b  Copy a password\n" "$C_ACCENT" "$C_RESET"
-        printf "%b8%b  Exit\n" "$C_ACCENT" "$C_RESET"
-        printf "%bVault:%b %s\n" "$C_DIM" "$C_RESET" "$ENCRYPTED_FILE"
+        render_hacker_dashboard
         echo
-        read -p "Choose an option [1-8]: " choice
+        printf "%broot@bashpass%b:%b~/vault%b$ " "$C_PROMPT" "$C_RESET" "$C_DIM" "$C_RESET"
+        read -r choice
         case "$choice" in
             1)
                 ui_section "Generate or Update"
@@ -426,7 +465,7 @@ main_menu() {
                 break
                 ;;
             *)
-                printf "%bInvalid option!%b\n" "$C_WARN" "$C_RESET"
+                printf "%bInvalid command. Use 1-8.%b\n" "$C_WARN" "$C_RESET"
                 pause_for_user
                 ;;
         esac
