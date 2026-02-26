@@ -7,7 +7,11 @@ A secure, encrypted password manager written in pure Bash.
 - AES-256-CBC encryption with PBKDF2 key derivation
 - Master password protection
 - Strong password generation
+- Add custom passwords
+- Update existing entries
 - Search, view, and delete passwords
+- List services
+- Copy to clipboard (if `pbcopy`, `xclip`, or `xsel` is available)
 
 ## Requirements
 

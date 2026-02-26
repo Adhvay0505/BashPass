@@ -2,11 +2,27 @@
 
 PASSWORD_FILE="password_store.csv"
 ENCRYPTED_FILE="password_store.csv.enc"
+STORE_HEADER="BASHPASS_V1"
 MASTER_PASSWORD=""
+
+umask 077
 
 validate_number() {
     if ! [[ "$1" =~ ^[0-9]+$ ]] || [ "$1" -le 0 ]; then
         echo "Invalid input: '$1'. Please enter a positive number."
+        exit 1
+    fi
+}
+
+validate_field() {
+    local value="$1"
+    local label="$2"
+    if [[ -z "$value" ]]; then
+        echo "Invalid $label: cannot be empty."
+        exit 1
+    fi
+    if [[ "$value" == *","* ]] || [[ "$value" == *$'\n'* ]] || [[ "$value" == *$'\r'* ]]; then
+        echo "Invalid $label: commas and newlines are not allowed."
         exit 1
     fi
 }
@@ -37,27 +53,36 @@ derive_key() {
     echo -n "$MASTER_PASSWORD" | openssl dgst -sha256 -binary | xxd -p -c 32
 }
 
+ensure_password_file() {
+    if [[ ! -f "$PASSWORD_FILE" ]] || [[ ! -s "$PASSWORD_FILE" ]]; then
+        echo "$STORE_HEADER" > "$PASSWORD_FILE"
+    fi
+    chmod 600 "$PASSWORD_FILE" 2>/dev/null
+}
+
 encrypt_file() {
     if [[ -f "$PASSWORD_FILE" ]]; then
-        echo "BASHPASS_MARKER" >> "$PASSWORD_FILE"
-        openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$PASSWORD_FILE" -out "$ENCRYPTED_FILE" 2>/dev/null
+        ensure_password_file
+        openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -pass stdin -in "$PASSWORD_FILE" -out "$ENCRYPTED_FILE" 2>/dev/null <<<"$MASTER_PASSWORD"
         local result=$?
         rm -f "$PASSWORD_FILE"
         if [[ $result -ne 0 ]] || [[ ! -f "$ENCRYPTED_FILE" ]]; then
             echo "Error: Encryption failed. Check OpenSSL installation."
             exit 1
         fi
+        chmod 600 "$ENCRYPTED_FILE" 2>/dev/null
     fi
 }
 
 decrypt_file() {
     if [[ -f "$ENCRYPTED_FILE" ]]; then
-        openssl enc -aes-256-cbc -d -pbkdf2 -iter 100000 -pass pass:"$MASTER_PASSWORD" -in "$ENCRYPTED_FILE" -out "$PASSWORD_FILE" 2>/dev/null
+        openssl enc -aes-256-cbc -d -pbkdf2 -iter 100000 -pass stdin -in "$ENCRYPTED_FILE" -out "$PASSWORD_FILE" 2>/dev/null <<<"$MASTER_PASSWORD"
         if [[ $? -ne 0 ]]; then
             echo "Decryption failed! Wrong password or corrupted file."
             rm -f "$PASSWORD_FILE" 2>/dev/null
             exit 1
         fi
+        chmod 600 "$PASSWORD_FILE" 2>/dev/null
     fi
 }
 
@@ -71,8 +96,11 @@ prompt_master_password() {
         
         if [[ -f "$ENCRYPTED_FILE" ]]; then
             decrypt_file
-            if grep -q "BASHPASS_MARKER" "$PASSWORD_FILE" 2>/dev/null; then
+            if head -n 1 "$PASSWORD_FILE" 2>/dev/null | grep -qx "$STORE_HEADER"; then
+                return 0
+            elif grep -q "BASHPASS_MARKER" "$PASSWORD_FILE" 2>/dev/null; then
                 sed -i '/BASHPASS_MARKER/d' "$PASSWORD_FILE"
+                sed -i "1i $STORE_HEADER" "$PASSWORD_FILE"
                 return 0
             else
                 rm -f "$PASSWORD_FILE" 2>/dev/null
@@ -92,6 +120,10 @@ save_password() {
     local service="$1"
     local username="$2"
     local password="$3"
+    validate_field "$service" "service"
+    validate_field "$username" "username"
+    validate_field "$password" "password"
+    ensure_password_file
     echo "$service,$username,$password" >> "$PASSWORD_FILE"
     echo "Saved for $service ($username)"
     encrypt_file
@@ -105,6 +137,7 @@ view_passwords() {
     echo "--------------------------------------------------"
     if [[ -s "$PASSWORD_FILE" ]]; then
         while IFS=',' read -r service username password; do
+            [[ "$service" == "$STORE_HEADER" ]] && continue
             printf "%-20s %-20s %-30s\n" "$service" "$username" "$password"
         done < "$PASSWORD_FILE"
     else
@@ -114,21 +147,138 @@ view_passwords() {
 
 search_passwords() {
     read -p "Enter service or username to search: " term
+    if [[ -z "$term" ]]; then
+        echo "Search term cannot be empty."
+        return
+    fi
+    local term_lc
+    term_lc=$(echo "$term" | tr '[:upper:]' '[:lower:]')
     echo "--------------------------------------------------"
     printf "%-20s %-20s %-30s\n" "SERVICE" "USERNAME" "PASSWORD"
     echo "--------------------------------------------------"
-    grep -i "$term" "$PASSWORD_FILE" | while IFS=',' read -r service username password; do
-        printf "%-20s %-20s %-30s\n" "$service" "$username" "$password"
-    done
+    awk -F',' -v term="$term_lc" -v header="$STORE_HEADER" '
+        BEGIN { found=0 }
+        {
+            if ($1 == header) next
+            line=tolower($0)
+            if (index(line, term)) {
+                printf "%-20s %-20s %-30s\n", $1, $2, $3
+                found=1
+            }
+        }
+        END { if (!found) print "No matches found." }
+    ' "$PASSWORD_FILE"
+}
+
+list_services() {
+    echo "--------------------------------------------------"
+    echo "SERVICES"
+    echo "--------------------------------------------------"
+    awk -F',' -v header="$STORE_HEADER" '
+        $1 == header { next }
+        { services[$1]=1 }
+        END { for (s in services) print s }
+    ' "$PASSWORD_FILE" | sort
+}
+
+upsert_password() {
+    read -p "Service Name: " service
+    read -p "Username/Email: " username
+    validate_field "$service" "service"
+    validate_field "$username" "username"
+    read -p "Password Length: " PASS_LENGTH
+    validate_number "$PASS_LENGTH"
+    local password
+    password=$(generate_password "$PASS_LENGTH")
+    echo "Generated Password: $password"
+    read -p "Save this password? (Y/N): " save
+    if [[ "$save" =~ ^[Yy]$ ]]; then
+        ensure_password_file
+        tmpfile=$(mktemp)
+        awk -F',' -v OFS=',' -v svc="$service" -v usr="$username" -v pass="$password" -v header="$STORE_HEADER" '
+            BEGIN { found=0 }
+            $1 == header { print; next }
+            ($1 == svc && $2 == usr) { print svc, usr, pass; found=1; next }
+            { print }
+            END {
+                if (!found) {
+                    print svc, usr, pass
+                }
+            }
+        ' "$PASSWORD_FILE" > "$tmpfile"
+        mv "$tmpfile" "$PASSWORD_FILE"
+        echo "Saved for $service ($username)"
+        encrypt_file
+    fi
 }
 
 delete_password() {
-    read -p "Enter service or username to delete: " term
+    read -p "Service Name to delete: " service
+    read -p "Username/Email to delete: " username
+    validate_field "$service" "service"
+    validate_field "$username" "username"
+    local matches
+    matches=$(awk -F',' -v svc="$service" -v usr="$username" -v header="$STORE_HEADER" '
+        $1 == header { next }
+        ($1 == svc && $2 == usr) { count++ }
+        END { print count+0 }
+    ' "$PASSWORD_FILE")
+    if [[ "$matches" -eq 0 ]]; then
+        echo "No matching entry found."
+        return
+    fi
+    read -p "Delete $matches matching entr$( [[ "$matches" -eq 1 ]] && echo "y" || echo "ies" )? (Y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "Delete canceled."
+        return
+    fi
     tmpfile=$(mktemp)
-    grep -iv "$term" "$PASSWORD_FILE" > "$tmpfile"
+    awk -F',' -v OFS=',' -v svc="$service" -v usr="$username" -v header="$STORE_HEADER" '
+        $1 == header { print; next }
+        !($1 == svc && $2 == usr) { print }
+    ' "$PASSWORD_FILE" > "$tmpfile"
     mv "$tmpfile" "$PASSWORD_FILE"
     encrypt_file
-    echo "Relevant entries deleted (if matched)."
+    echo "Deleted $matches matching entr$( [[ "$matches" -eq 1 ]] && echo "y" || echo "ies" )."
+}
+
+copy_password() {
+    read -p "Service Name: " service
+    read -p "Username/Email: " username
+    validate_field "$service" "service"
+    validate_field "$username" "username"
+    local password
+    password=$(awk -F',' -v svc="$service" -v usr="$username" -v header="$STORE_HEADER" '
+        $1 == header { next }
+        ($1 == svc && $2 == usr) { print $3; exit }
+    ' "$PASSWORD_FILE")
+    if [[ -z "$password" ]]; then
+        echo "No matching entry found."
+        return
+    fi
+    if command -v pbcopy >/dev/null 2>&1; then
+        printf "%s" "$password" | pbcopy
+        echo "Password copied to clipboard (pbcopy)."
+        return
+    fi
+    if command -v xclip >/dev/null 2>&1; then
+        printf "%s" "$password" | xclip -selection clipboard
+        echo "Password copied to clipboard (xclip)."
+        return
+    fi
+    if command -v xsel >/dev/null 2>&1; then
+        printf "%s" "$password" | xsel --clipboard --input
+        echo "Password copied to clipboard (xsel)."
+        return
+    fi
+    echo "No clipboard tool found. Password: $password"
+}
+
+save_custom_password() {
+    read -p "Service Name: " service
+    read -p "Username/Email: " username
+    read -p "Password: " password
+    save_password "$service" "$username" "$password"
 }
 
 cleanup() {
@@ -140,13 +290,11 @@ cleanup() {
 # Draw a simple banner
 clear 
 echo "
-██████   █████  ███████ ██   ██ ██████   █████  ███████ ███████ 
-██   ██ ██   ██ ██      ██   ██ ██   ██ ██   ██ ██      ██      
-██████  ███████ ███████ ███████ ██████  ███████ ███████ ███████ 
-██   ██ ██   ██      ██ ██   ██ ██      ██   ██      ██      ██ 
-██████  ██   ██ ███████ ██   ██ ██      ██   ██ ███████ ███████ 
-                                                                
-                                        
+▄▄▄▄·  ▄▄▄· .▄▄ ·  ▄ .▄ ▄▄▄· ▄▄▄· .▄▄ · .▄▄ · 
+▐█ ▀█▪▐█ ▀█ ▐█ ▀. ██▪▐█▐█ ▄█▐█ ▀█ ▐█ ▀. ▐█ ▀. 
+▐█▀▀█▄▄█▀▀█ ▄▀▀▀█▄██▀▀█ ██▀·▄█▀▀█ ▄▀▀▀█▄▄▀▀▀█▄
+██▄▪▐█▐█▪ ▐▌▐█▄▪▐███▌▐▀▐█▪·•▐█▪ ▐▌▐█▄▪▐█▐█▄▪▐█
+·▀▀▀▀  ▀  ▀  ▀▀▀▀ ▀▀▀ ·.▀    ▀  ▀  ▀▀▀▀  ▀▀▀▀ 
 "
 
 # Create data file if it doesn't exist
@@ -171,7 +319,7 @@ if [[ ! -f "$ENCRYPTED_FILE" ]]; then
                 echo "Passwords don't match. Please try again."
             fi
         done
-        echo "BASHPASS_MARKER" > "$PASSWORD_FILE"
+        echo "$STORE_HEADER" > "$PASSWORD_FILE"
         encrypt_file
         rm -f "$PASSWORD_FILE"
         echo "Your password vault is now encrypted!"
@@ -185,36 +333,39 @@ main_menu() {
     trap cleanup EXIT
     while true; do
         echo ""
-        echo "1. Generate a new password"
-        echo "2. View all saved passwords"
-        echo "3. Search for a password"
-        echo "4. Delete a password"
-        echo "5. Exit"
+        echo "1. Generate or update a password"
+        echo "2. Add a custom password"
+        echo "3. View all saved passwords"
+        echo "4. Search for a password"
+        echo "5. Delete a password"
+        echo "6. List services"
+        echo "7. Copy a password"
+        echo "8. Exit"
         echo ""
-        read -p "Choose an option [1-5]: " choice
+        read -p "Choose an option [1-8]: " choice
         case "$choice" in
             1)
-                read -p "Service Name: " service
-                read -p "Username/Email: " username
-                read -p "Password Length: " PASS_LENGTH
-                validate_number "$PASS_LENGTH"
-                password=$(generate_password "$PASS_LENGTH")
-                echo "Generated Password: $password"
-                read -p "Save this password? (Y/N): " save
-                if [[ "$save" =~ ^[Yy]$ ]]; then
-                    save_password "$service" "$username" "$password"
-                fi
+                upsert_password
                 ;;
             2)
-                view_passwords
+                save_custom_password
                 ;;
             3)
-                search_passwords
+                view_passwords
                 ;;
             4)
-                delete_password
+                search_passwords
                 ;;
             5)
+                delete_password
+                ;;
+            6)
+                list_services
+                ;;
+            7)
+                copy_password
+                ;;
+            8)
                 echo "Bye!"
                 break
                 ;;
